@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { AutocompleteInput } from "@/components/AutocompleteInput";
-import { MisconductModal, MisconductData } from "@/components/MisconductModal";
 
 const AGE_GROUPS = [
   "Adult / Open",
@@ -20,14 +20,12 @@ const CREW_FIELD: Record<string, string> = {
   "Assistant Referee 2": "ar2CrewName",
   "4th Official":        "fourthCrewName",
 };
-
 const FEEDBACK_FROM_FIELD: Record<string, string> = {
   "Referee":             "feedbackFromReferee",
   "Assistant Referee 1": "feedbackFromAr1",
   "Assistant Referee 2": "feedbackFromAr2",
   "4th Official":        "feedbackFromFourth",
 };
-
 const FEEDBACK_FOR_FIELD: Record<string, string> = {
   "Referee":             "feedbackForReferee",
   "Assistant Referee 1": "feedbackForAr1",
@@ -46,7 +44,6 @@ const inputStyle: React.CSSProperties = {
   width: "100%",
   transition: "border-color 0.15s",
 };
-
 const textareaStyle: React.CSSProperties = {
   ...inputStyle,
   minHeight: "120px",
@@ -54,7 +51,6 @@ const textareaStyle: React.CSSProperties = {
   fontFamily: "inherit",
   lineHeight: "1.5",
 };
-
 const labelStyle: React.CSSProperties = {
   fontSize: "11px",
   letterSpacing: "0.09em",
@@ -62,7 +58,6 @@ const labelStyle: React.CSSProperties = {
   marginBottom: "6px",
   display: "block",
 };
-
 const sectionStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -76,7 +71,6 @@ const sectionStyle: React.CSSProperties = {
 function SectionLabel({ children }: { children: string }) {
   return <div style={{ fontSize: "11px", letterSpacing: "0.1em", color: "rgba(0,180,255,0.6)", marginBottom: "4px" }}>{children}</div>;
 }
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
@@ -85,7 +79,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </div>
   );
 }
-
 function focusBlue(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
   e.target.style.borderColor = "rgba(0,210,255,0.5)";
 }
@@ -93,33 +86,99 @@ function blurBlue(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | H
   e.target.style.borderColor = "rgba(0,150,255,0.25)";
 }
 
-export default function AddReportPage() {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toDateInput(d: any): string {
+  if (!d) return "";
+  const dt = new Date(d);
+  return dt.toISOString().slice(0, 10);
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toTimeInput(d: any): string {
+  if (!d) return "";
+  const dt = new Date(d);
+  return dt.toISOString().slice(11, 16);
+}
+
+export default function EditReportPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const router = useRouter();
+
   const [positions, setPositions] = useState<Position[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // Form state
+  const [matchDate, setMatchDate] = useState("");
+  const [matchTime, setMatchTime] = useState("");
+  const [location, setLocation] = useState("");
+  const [homeTeam, setHomeTeam] = useState("");
+  const [awayTeam, setAwayTeam] = useState("");
+  const [league, setLeague] = useState("");
+  const [ageGroup, setAgeGroup] = useState("");
   const [selectedPositionId, setSelectedPositionId] = useState<number | null>(null);
   const [naFlags, setNaFlags] = useState<Record<string, boolean>>({});
   const [crewNames, setCrewNames] = useState<Record<string, string>>({});
   const [feedbackFrom, setFeedbackFrom] = useState<Record<string, string>>({});
   const [feedbackFor, setFeedbackFor] = useState<Record<string, string>>({});
+  const [personalReflection, setPersonalReflection] = useState("");
   const [wentWell, setWentWell] = useState(["", "", ""]);
   const [toImprove, setToImprove] = useState(["", "", ""]);
-  const [personalReflection, setPersonalReflection] = useState("");
-  const [misconducts, setMisconducts] = useState<MisconductData[]>([]);
-  const [modalType, setModalType] = useState<"CAUTION" | "SENDOFF" | null>(null);
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    fetch("/api/positions").then(r => r.json()).then(setPositions).catch(() => {});
-  }, []);
+    Promise.all([
+      fetch("/api/positions").then(r => r.json()),
+      fetch(`/api/match-reports/${id}`).then(r => r.json()),
+    ]).then(([posData, report]) => {
+      setPositions(posData);
+
+      setMatchDate(toDateInput(report.matchDate));
+      setMatchTime(toTimeInput(report.matchTime));
+      setLocation(report.location ?? "");
+      setHomeTeam(report.homeTeam ?? "");
+      setAwayTeam(report.awayTeam ?? "");
+      setLeague(report.league ?? "");
+      setAgeGroup(report.ageGroup ?? "");
+      setSelectedPositionId(report.positionId);
+
+      const posMap: Record<string, string> = {
+        "Referee":             report.refereeCrewName  ?? "",
+        "Assistant Referee 1": report.ar1CrewName      ?? "",
+        "Assistant Referee 2": report.ar2CrewName      ?? "",
+        "4th Official":        report.fourthCrewName   ?? "",
+      };
+      const naMap: Record<string, boolean> = {};
+      for (const [pos, val] of Object.entries(posMap)) {
+        if (val === "N/A") { naMap[pos] = true; posMap[pos] = ""; }
+      }
+      setCrewNames(posMap);
+      setNaFlags(naMap);
+
+      setFeedbackFrom({
+        "Referee":             report.feedbackFromReferee ?? "",
+        "Assistant Referee 1": report.feedbackFromAr1     ?? "",
+        "Assistant Referee 2": report.feedbackFromAr2     ?? "",
+        "4th Official":        report.feedbackFromFourth  ?? "",
+      });
+      setFeedbackFor({
+        "Referee":             report.feedbackForReferee ?? "",
+        "Assistant Referee 1": report.feedbackForAr1     ?? "",
+        "Assistant Referee 2": report.feedbackForAr2     ?? "",
+        "4th Official":        report.feedbackForFourth  ?? "",
+      });
+      setPersonalReflection(report.personalReflection ?? "");
+      setWentWell([report.wentWell1 ?? "", report.wentWell2 ?? "", report.wentWell3 ?? ""]);
+      setToImprove([report.toImprove1 ?? "", report.toImprove2 ?? "", report.toImprove3 ?? ""]);
+      setLoading(false);
+    }).catch(() => { setError("Failed to load report."); setLoading(false); });
+  }, [id]);
 
   const selectedPosition = positions.find(p => p.id === selectedPositionId) ?? null;
   const crewPositions = positions.filter(p => p.id !== selectedPositionId);
   const activeCrew = crewPositions.filter(p => !naFlags[p.name] && crewNames[p.name]?.trim());
 
-  function handlePositionChange(id: number) {
-    setSelectedPositionId(id);
+  function handlePositionChange(newId: number) {
+    setSelectedPositionId(newId);
     setNaFlags({});
     setCrewNames({});
     setFeedbackFrom({});
@@ -138,7 +197,7 @@ export default function AddReportPage() {
     });
   }
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
 
@@ -150,10 +209,6 @@ export default function AddReportPage() {
     }
 
     setSubmitting(true);
-
-    const form = e.currentTarget;
-    const get = (name: string) =>
-      (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement)?.value ?? "";
 
     const crewPayload: Record<string, string | null> = {};
     const feedbackFromPayload: Record<string, string | null> = {};
@@ -168,13 +223,7 @@ export default function AddReportPage() {
     }
 
     const payload = {
-      matchDate: get("matchDate"),
-      matchTime: get("matchTime"),
-      location: get("location"),
-      homeTeam: get("homeTeam"),
-      awayTeam: get("awayTeam"),
-      league: get("league"),
-      ageGroup: get("ageGroup"),
+      matchDate, matchTime, location, homeTeam, awayTeam, league, ageGroup,
       positionId: selectedPositionId,
       ...crewPayload,
       ...feedbackFromPayload,
@@ -186,21 +235,19 @@ export default function AddReportPage() {
       toImprove1: toImprove[0].trim() || null,
       toImprove2: toImprove[1].trim() || null,
       toImprove3: toImprove[2].trim() || null,
-      misconducts,
     };
 
     try {
-      const res = await fetch("/api/match-reports", {
-        method: "POST",
+      const res = await fetch(`/api/match-reports/${id}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        setSuccess(true);
-        setTimeout(() => router.push("/dashboard/reports"), 1500);
+        router.push(`/dashboard/reports/${id}`);
       } else {
         const data = await res.json();
-        setError(data.error ?? "Failed to save report.");
+        setError(data.error ?? "Failed to save changes.");
       }
     } catch {
       setError("Unable to connect. Please try again.");
@@ -209,11 +256,29 @@ export default function AddReportPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="p-6 lg:p-10" style={{ color: "rgba(120,170,220,0.6)", fontSize: "14px" }}>
+        Loading report…
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 lg:p-10 max-w-3xl" style={{ backgroundImage: "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(0,80,180,0.08) 0%, transparent 60%)" }}>
+
+      {/* Breadcrumb */}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "24px", fontSize: "12px", color: "rgba(100,150,200,0.5)" }}>
+        <Link href="/dashboard/reports" style={{ color: "rgba(0,180,255,0.7)", textDecoration: "none" }}>Match Reports</Link>
+        <span>/</span>
+        <Link href={`/dashboard/reports/${id}`} style={{ color: "rgba(0,180,255,0.7)", textDecoration: "none" }}>Report #{id}</Link>
+        <span>/</span>
+        <span>Edit</span>
+      </div>
+
       <div className="mb-8">
-        <h1 style={{ color: "#e8f4ff", fontSize: "22px", fontWeight: 700, marginBottom: "4px" }}>Add Match Report</h1>
-        <p style={{ color: "rgba(120,170,220,0.6)", fontSize: "13px" }}>Record the details for a match you officiated.</p>
+        <h1 style={{ color: "#e8f4ff", fontSize: "22px", fontWeight: 700, marginBottom: "4px" }}>Edit Match Report</h1>
+        <p style={{ color: "rgba(120,170,220,0.6)", fontSize: "13px" }}>Update the details for this match.</p>
       </div>
 
       <div style={{ background: "rgba(0,20,50,0.6)", border: "1px solid rgba(0,150,255,0.14)", borderRadius: "12px", padding: "28px", position: "relative", overflow: "hidden" }}>
@@ -221,37 +286,36 @@ export default function AddReportPage() {
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
 
-          {/* Date + Time */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Match Date">
-              <input type="date" name="matchDate" required style={inputStyle} onFocus={focusBlue} onBlur={blurBlue} />
+              <input type="date" value={matchDate} onChange={e => setMatchDate(e.target.value)} required style={inputStyle} onFocus={focusBlue} onBlur={blurBlue} />
             </Field>
             <Field label="Kick-off Time">
-              <input type="time" name="matchTime" required style={inputStyle} onFocus={focusBlue} onBlur={blurBlue} />
+              <input type="time" value={matchTime} onChange={e => setMatchTime(e.target.value)} required style={inputStyle} onFocus={focusBlue} onBlur={blurBlue} />
             </Field>
           </div>
 
           <Field label="Location / Venue">
-            <input type="text" name="location" placeholder="e.g. Riverside Park Field 3" required style={inputStyle} onFocus={focusBlue} onBlur={blurBlue} />
+            <input type="text" value={location} onChange={e => setLocation(e.target.value)} required style={inputStyle} onFocus={focusBlue} onBlur={blurBlue} />
           </Field>
 
           <div style={{ borderTop: "1px solid rgba(0,150,255,0.1)" }} />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Home Team">
-              <input type="text" name="homeTeam" placeholder="Home team name" required style={inputStyle} onFocus={focusBlue} onBlur={blurBlue} />
+              <input type="text" value={homeTeam} onChange={e => setHomeTeam(e.target.value)} required style={inputStyle} onFocus={focusBlue} onBlur={blurBlue} />
             </Field>
             <Field label="Away Team">
-              <input type="text" name="awayTeam" placeholder="Away team name" required style={inputStyle} onFocus={focusBlue} onBlur={blurBlue} />
+              <input type="text" value={awayTeam} onChange={e => setAwayTeam(e.target.value)} required style={inputStyle} onFocus={focusBlue} onBlur={blurBlue} />
             </Field>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="League / Competition">
-              <input type="text" name="league" placeholder="e.g. AYSO Region 10" required style={inputStyle} onFocus={focusBlue} onBlur={blurBlue} />
+              <input type="text" value={league} onChange={e => setLeague(e.target.value)} required style={inputStyle} onFocus={focusBlue} onBlur={blurBlue} />
             </Field>
             <Field label="Age Group">
-              <select name="ageGroup" required style={{ ...inputStyle, cursor: "pointer" }} onFocus={focusBlue} onBlur={blurBlue}>
+              <select value={ageGroup} onChange={e => setAgeGroup(e.target.value)} required style={{ ...inputStyle, cursor: "pointer" }} onFocus={focusBlue} onBlur={blurBlue}>
                 <option value="" style={{ background: "#071428" }}>Select age group…</option>
                 {AGE_GROUPS.map(g => <option key={g} value={g} style={{ background: "#071428" }}>{g}</option>)}
               </select>
@@ -260,15 +324,13 @@ export default function AddReportPage() {
 
           <div style={{ borderTop: "1px solid rgba(0,150,255,0.1)" }} />
 
-          {/* Position */}
           <Field label="Your Position">
-            <select name="positionId" required value={selectedPositionId ?? ""} onChange={e => handlePositionChange(Number(e.target.value))} style={{ ...inputStyle, cursor: "pointer" }} onFocus={focusBlue} onBlur={blurBlue}>
+            <select value={selectedPositionId ?? ""} onChange={e => handlePositionChange(Number(e.target.value))} required style={{ ...inputStyle, cursor: "pointer" }} onFocus={focusBlue} onBlur={blurBlue}>
               <option value="" style={{ background: "#071428" }}>Select your position…</option>
               {positions.map(p => <option key={p.id} value={p.id} style={{ background: "#071428" }}>{p.name}</option>)}
             </select>
           </Field>
 
-          {/* Crew */}
           {selectedPosition && (
             <div style={sectionStyle}>
               <SectionLabel>OFFICIATING CREW</SectionLabel>
@@ -292,7 +354,6 @@ export default function AddReportPage() {
             </div>
           )}
 
-          {/* Crew feedback — only shown when crew members have names */}
           {activeCrew.length > 0 && (
             <div style={sectionStyle}>
               <SectionLabel>CREW FEEDBACK</SectionLabel>
@@ -314,12 +375,10 @@ export default function AddReportPage() {
 
           <div style={{ borderTop: "1px solid rgba(0,150,255,0.1)" }} />
 
-          {/* Personal reflection */}
           <Field label="Personal Reflection">
-            <textarea name="personalReflection" placeholder="How did the match go overall? What are your thoughts?" value={personalReflection} onChange={e => setPersonalReflection(e.target.value)} style={textareaStyle} onFocus={focusBlue} onBlur={blurBlue} />
+            <textarea placeholder="How did the match go overall?" value={personalReflection} onChange={e => setPersonalReflection(e.target.value)} style={textareaStyle} onFocus={focusBlue} onBlur={blurBlue} />
           </Field>
 
-          {/* Went well */}
           <div style={sectionStyle}>
             <SectionLabel>THINGS THAT WENT WELL</SectionLabel>
             {wentWell.map((v, i) => (
@@ -329,7 +388,6 @@ export default function AddReportPage() {
             ))}
           </div>
 
-          {/* To improve */}
           <div style={sectionStyle}>
             <SectionLabel>AREAS TO IMPROVE</SectionLabel>
             {toImprove.map((v, i) => (
@@ -339,72 +397,18 @@ export default function AddReportPage() {
             ))}
           </div>
 
-          {/* Cautions & Send-offs */}
-          <div style={sectionStyle}>
-            <SectionLabel>CAUTIONS &amp; SEND-OFFS</SectionLabel>
-            <div style={{ display: "flex", gap: "10px" }}>
-              <button
-                type="button"
-                onClick={() => setModalType("CAUTION")}
-                style={{ padding: "8px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 700, letterSpacing: "0.07em", background: "rgba(245,196,0,0.1)", border: "1px solid rgba(245,196,0,0.3)", color: "#f5c400" }}
-              >
-                + CAUTION
-              </button>
-              <button
-                type="button"
-                onClick={() => setModalType("SENDOFF")}
-                style={{ padding: "8px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 700, letterSpacing: "0.07em", background: "rgba(255,77,77,0.1)", border: "1px solid rgba(255,77,77,0.3)", color: "#ff4d4d" }}
-              >
-                + SEND-OFF
-              </button>
-            </div>
-            {misconducts.length === 0 ? (
-              <p style={{ fontSize: "13px", color: "rgba(120,160,200,0.4)", fontStyle: "italic", margin: 0 }}>No cards added</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                {[...misconducts].sort((a, b) => a.minute - b.minute).map((m, i) => {
-                  const isCaution = m.type === "CAUTION";
-                  const accentColor = isCaution ? "#f5c400" : "#ff4d4d";
-                  return (
-                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "10px 12px", borderRadius: "8px", background: isCaution ? "rgba(245,196,0,0.05)" : "rgba(255,77,77,0.05)", border: `1px solid ${isCaution ? "rgba(245,196,0,0.15)" : "rgba(255,77,77,0.15)"}` }}>
-                      <div style={{ width: "14px", height: "20px", borderRadius: "2px", flexShrink: 0, background: accentColor, boxShadow: `0 0 8px ${accentColor}50` }} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: "13px", fontWeight: 600, color: "#e8f4ff" }}>{m.name}{m.number ? ` #${m.number}` : ""} <span style={{ color: accentColor }}>{m.minute}&apos;</span></div>
-                        <div style={{ fontSize: "12px", color: "rgba(140,180,220,0.55)", marginTop: "2px" }}>{m.reason}</div>
-                      </div>
-                      <button type="button" onClick={() => setMisconducts(prev => prev.filter((_, j) => j !== i))} style={{ background: "transparent", border: "none", color: "rgba(120,160,200,0.4)", cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: "2px 4px" }}>×</button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
           {error && <div style={{ background: "rgba(255,60,60,0.1)", border: "1px solid rgba(255,80,80,0.3)", borderRadius: "8px", padding: "10px 14px", fontSize: "13px", color: "#ff8080" }}>{error}</div>}
-          {success && <div style={{ background: "rgba(0,200,100,0.1)", border: "1px solid rgba(0,200,100,0.3)", borderRadius: "8px", padding: "10px 14px", fontSize: "13px", color: "#60d890" }}>Report saved! Redirecting…</div>}
 
           <div style={{ display: "flex", gap: "12px", paddingTop: "4px" }}>
             <button type="submit" disabled={submitting} style={{ flex: 1, padding: "13px", borderRadius: "8px", background: submitting ? "rgba(0,80,160,0.5)" : "linear-gradient(135deg, #0055cc, #0099ee)", color: "#fff", fontWeight: 600, fontSize: "14px", letterSpacing: "0.06em", border: "none", cursor: submitting ? "not-allowed" : "pointer", boxShadow: submitting ? "none" : "0 0 20px rgba(0,120,255,0.25)", opacity: submitting ? 0.7 : 1 }}>
-              {submitting ? "SAVING…" : "SAVE REPORT"}
+              {submitting ? "SAVING…" : "SAVE CHANGES"}
             </button>
-            <button type="button" onClick={() => router.push("/dashboard/reports")} style={{ padding: "13px 20px", borderRadius: "8px", background: "transparent", color: "rgba(140,180,220,0.6)", fontSize: "14px", border: "1px solid rgba(0,150,255,0.2)", cursor: "pointer" }}>
+            <Link href={`/dashboard/reports/${id}`} style={{ padding: "13px 20px", borderRadius: "8px", background: "transparent", color: "rgba(140,180,220,0.6)", fontSize: "14px", border: "1px solid rgba(0,150,255,0.2)", cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
               Cancel
-            </button>
+            </Link>
           </div>
         </form>
       </div>
-
-      {modalType && (
-        <MisconductModal
-          isOpen={true}
-          type={modalType}
-          onClose={() => setModalType(null)}
-          onSubmit={data => {
-            setMisconducts(prev => [...prev, data]);
-            setModalType(null);
-          }}
-        />
-      )}
     </div>
   );
 }

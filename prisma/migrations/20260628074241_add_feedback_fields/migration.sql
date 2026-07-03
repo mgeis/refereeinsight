@@ -1,0 +1,16 @@
+-- AlterTable
+ALTER TABLE "MatchReport" ADD COLUMN     "feedbackForAr1" TEXT,
+ADD COLUMN     "feedbackForAr2" TEXT,
+ADD COLUMN     "feedbackForFourth" TEXT,
+ADD COLUMN     "feedbackForReferee" TEXT,
+ADD COLUMN     "feedbackFromAr1" TEXT,
+ADD COLUMN     "feedbackFromAr2" TEXT,
+ADD COLUMN     "feedbackFromFourth" TEXT,
+ADD COLUMN     "feedbackFromReferee" TEXT,
+ADD COLUMN     "personalReflection" TEXT,
+ADD COLUMN     "toImprove1" TEXT,
+ADD COLUMN     "toImprove2" TEXT,
+ADD COLUMN     "toImprove3" TEXT,
+ADD COLUMN     "wentWell1" TEXT,
+ADD COLUMN     "wentWell2" TEXT,
+ADD COLUMN     "wentWell3" TEXT;

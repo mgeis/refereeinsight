@@ -1,17 +1,24 @@
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client";
+import { getConnectionString } from "./db-config";
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
+type PrismaClientSingleton = PrismaClient;
 
-function createClient() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const globalForPrisma = globalThis as unknown as {
+  prismaPromise: Promise<PrismaClientSingleton> | undefined;
+};
+
+async function createClient(): Promise<PrismaClientSingleton> {
+  const connectionString = await getConnectionString();
+  const pool = new Pool({ connectionString });
   const adapter = new PrismaPg(pool);
   return new PrismaClient({ adapter });
 }
 
-export const prisma = globalForPrisma.prisma ?? createClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+export function getPrisma(): Promise<PrismaClientSingleton> {
+  if (!globalForPrisma.prismaPromise) {
+    globalForPrisma.prismaPromise = createClient();
+  }
+  return globalForPrisma.prismaPromise;
 }

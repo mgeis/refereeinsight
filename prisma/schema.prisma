@@ -12,14 +12,44 @@ datasource db {
   provider = "postgresql"
 }
 
+enum MisconductType {
+  CAUTION
+  SENDOFF
+}
+
+enum RecipientType {
+  PLAYER
+  TEAM_STAFF
+}
+
 model User {
+  id         Int         @id @default(autoincrement())
+  firstName  String
+  lastName   String
+  username   String      @unique
+  password   String
+  ussfId     String?
+  aysoId     String?
+  colleagues Colleague[]
+  sessions   Session[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+model Session {
+  token     String   @id
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Colleague {
   id        Int      @id @default(autoincrement())
   firstName String
   lastName  String
-  username  String   @unique
-  password  String
-  ussfId    String?
-  aysoId    String?
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -41,10 +71,41 @@ model MatchReport {
   ageGroup          String
   positionId        Int
   position          Position @relation(fields: [positionId], references: [id])
-  refereeCrewName   String?
-  ar1CrewName       String?
-  ar2CrewName       String?
-  fourthCrewName    String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  refereeCrewName      String?
+  ar1CrewName          String?
+  ar2CrewName          String?
+  fourthCrewName       String?
+  feedbackFromReferee  String?
+  feedbackFromAr1      String?
+  feedbackFromAr2      String?
+  feedbackFromFourth   String?
+  feedbackForReferee   String?
+  feedbackForAr1       String?
+  feedbackForAr2       String?
+  feedbackForFourth    String?
+  personalReflection   String?  @db.Text
+  wentWell1            String?
+  wentWell2            String?
+  wentWell3            String?
+  toImprove1           String?
+  toImprove2           String?
+  toImprove3           String?
+  misconducts          Misconduct[]
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model Misconduct {
+  id            Int            @id @default(autoincrement())
+  matchReportId Int
+  matchReport   MatchReport    @relation(fields: [matchReportId], references: [id], onDelete: Cascade)
+  type          MisconductType
+  recipientType RecipientType
+  minute        Int
+  number        String?
+  name          String
+  reason        String
+  description   String?        @db.Text
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 }

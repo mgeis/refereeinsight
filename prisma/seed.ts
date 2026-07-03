@@ -1,4 +1,5 @@
 import "dotenv/config";
+import bcrypt from "bcryptjs";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
@@ -16,32 +17,23 @@ async function main() {
   ];
 
   for (const name of positions) {
-    await prisma.position.upsert({
-      where: { name },
-      update: {},
-      create: { name },
-    });
+    await prisma.position.upsert({ where: { name }, update: {}, create: { name } });
   }
-
   console.log("Seeded positions.");
 
   await prisma.user.upsert({
     where: { username: "referee" },
     update: {},
     create: {
-      username: "referee",
-      password: "referee",
+      username:  "referee",
+      password:  await bcrypt.hash("referee", 12),
       firstName: "Dev",
-      lastName: "User",
+      lastName:  "User",
     },
   });
-
   console.log("Seeded default user.");
 }
 
 main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
+  .catch(e => { console.error(e); process.exit(1); })
   .finally(() => prisma.$disconnect());

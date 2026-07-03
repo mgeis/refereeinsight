@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 const NAV_ITEMS = [
   {
@@ -23,6 +23,16 @@ const NAV_ITEMS = [
         <rect x="3" y="3" width="14" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
         <line x1="10" y1="7" x2="10" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         <line x1="7" y1="10" x2="13" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
+    href: "/dashboard/reports",
+    label: "Match Reports",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <path d="M4 4h12M4 8h12M4 12h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <rect x="3" y="2" width="14" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" />
       </svg>
     ),
   },
@@ -51,7 +61,13 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router   = useRouter();
   const [open, setOpen] = useState(false);
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    router.push("/");
+  }
 
   const currentLabel =
     NAV_ITEMS.find((i) => pathname.startsWith(i.href))?.label ?? "Dashboard";
@@ -186,9 +202,9 @@ export function Sidebar() {
 
         {/* Log Out */}
         <div className="relative z-10 px-3 pb-6" style={{ borderTop: "1px solid rgba(0,150,255,0.1)", paddingTop: "16px" }}>
-          <Link
-            href="/"
-            style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", borderRadius: "8px", fontSize: "13px", color: "rgba(160,200,240,0.5)", textDecoration: "none", transition: "color 0.15s" }}
+          <button
+            onClick={handleLogout}
+            style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", borderRadius: "8px", fontSize: "13px", color: "rgba(160,200,240,0.5)", background: "none", border: "none", cursor: "pointer", width: "100%", transition: "color 0.15s" }}
             onMouseOver={e => (e.currentTarget.style.color = "#ff6b6b")}
             onMouseOut={e => (e.currentTarget.style.color = "rgba(160,200,240,0.5)")}
           >
@@ -198,7 +214,7 @@ export function Sidebar() {
               <line x1="5" y1="10" x2="13" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             Log Out
-          </Link>
+          </button>
         </div>
       </aside>
     </>

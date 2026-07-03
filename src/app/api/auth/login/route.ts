@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { authProvider, SESSION_COOKIE } from "@/lib/auth/index";
 
 export async function POST(req: NextRequest) {
   const { username, password } = await req.json();
@@ -8,19 +8,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Username and password are required." }, { status: 400 });
   }
 
-  const user = await prisma.user.findUnique({ where: { username } });
+  const token = await authProvider.authenticate(username, password);
 
-  if (!user || user.password !== password) {
+  if (!token) {
     return NextResponse.json({ error: "Invalid username or password." }, { status: 401 });
   }
 
   const response = NextResponse.json({ ok: true });
-  response.cookies.set("session_user_id", String(user.id), {
+  response.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,
-    path: "/",
+    secure:   process.env.NODE_ENV === "production",
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 60 * 8, // 8 hours
+    maxAge:   60 * 60 * 8,
+    path:     "/",
   });
 
   return response;
