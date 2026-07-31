@@ -29,9 +29,24 @@ async function main() {
       password:  await bcrypt.hash("referee", 12),
       firstName: "Dev",
       lastName:  "User",
+      email:     "mgeis@yahoo.com",
     },
   });
   console.log("Seeded default user.");
+
+  await prisma.user.upsert({
+    where: { username: "mgeis" },
+    update: {},
+    create: {
+      username:  "mgeis",
+      password:  await bcrypt.hash("mwg94566", 12),
+      firstName: "Matt",
+      lastName:  "Geis",
+      email:     "mattgeis@gmail.com",
+      roles:     { connect: { name: "ADMINISTRATOR" } },
+    },
+  });
+  console.log("Seeded admin user.");
 }
 
 main()

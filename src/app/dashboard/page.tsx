@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getPrisma } from "@/lib/db";
+import { getSessionUserIdFromCookies } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -10,14 +12,18 @@ function formatDate(d: Date) {
 }
 
 export default async function DashboardPage() {
+  const userId = await getSessionUserIdFromCookies();
+  if (!userId) redirect("/");
+
   const prisma = await getPrisma();
   const [totalReports, matchesRefereed, recentReports] = await Promise.all([
-    prisma.matchReport.count(),
-    prisma.matchReport.count({ where: { position: { name: "Referee" } } }),
+    prisma.matchReport.count({ where: { userId } }),
+    prisma.matchReport.count({ where: { userId, position: { name: "Referee" } } }),
     prisma.matchReport.findMany({
+      where: { userId },
       take: 5,
-      orderBy: { matchDate: "desc" },
-      include: { position: true },
+      orderBy: { match: { matchDate: "desc" } },
+      include: { position: true, match: true },
     }),
   ]);
 
@@ -143,22 +149,22 @@ export default async function DashboardPage() {
                     }}
                   >
                     <td style={{ padding: "13px 16px", color: "#00d2ff", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-                      {formatDate(r.matchDate)}
+                      {formatDate(r.match.matchDate)}
                     </td>
                     <td style={{ padding: "13px 16px", color: "rgba(200,225,255,0.85)", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {r.location}
+                      {r.match.location}
                     </td>
                     <td style={{ padding: "13px 16px", color: "rgba(200,225,255,0.85)", whiteSpace: "nowrap" }}>
-                      {r.homeTeam}
+                      {r.match.homeTeam}
                     </td>
                     <td style={{ padding: "13px 16px", color: "rgba(200,225,255,0.85)", whiteSpace: "nowrap" }}>
-                      {r.awayTeam}
+                      {r.match.awayTeam}
                     </td>
                     <td style={{ padding: "13px 16px", color: "rgba(160,195,235,0.7)", whiteSpace: "nowrap" }}>
-                      {r.league}
+                      {r.match.league}
                     </td>
                     <td style={{ padding: "13px 16px", color: "rgba(160,195,235,0.7)", whiteSpace: "nowrap" }}>
-                      {r.ageGroup}
+                      {r.match.ageGroup}
                     </td>
                     <td style={{ padding: "13px 16px", whiteSpace: "nowrap" }}>
                       <span style={{

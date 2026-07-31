@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Avatar } from "@/components/Avatar";
 
-type Colleague = { id: number; firstName: string; lastName: string };
+type Suggestion =
+  | { kind: "user"; id: number; firstName: string; lastName: string; profilePictureUrl: string | null }
+  | { kind: "colleague"; id: number; firstName: string; lastName: string };
 
 interface Props {
   value: string;
@@ -25,7 +28,7 @@ const baseInputStyle: React.CSSProperties = {
 };
 
 export function AutocompleteInput({ value, onChange, placeholder, disabled }: Props) {
-  const [suggestions, setSuggestions] = useState<Colleague[]>([]);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -45,7 +48,7 @@ export function AutocompleteInput({ value, onChange, placeholder, disabled }: Pr
       try {
         const res = await fetch(`/api/colleagues?q=${encodeURIComponent(value)}`);
         if (res.ok) {
-          const data: Colleague[] = await res.json();
+          const data: Suggestion[] = await res.json();
           setSuggestions(data);
           setOpen(data.length > 0);
           setActiveIndex(-1);
@@ -67,8 +70,8 @@ export function AutocompleteInput({ value, onChange, placeholder, disabled }: Pr
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
 
-  function select(colleague: Colleague) {
-    onChange(`${colleague.firstName} ${colleague.lastName}`.trim());
+  function select(suggestion: Suggestion) {
+    onChange(`${suggestion.firstName} ${suggestion.lastName}`.trim());
     setSuggestions([]);
     setOpen(false);
     setActiveIndex(-1);
@@ -124,21 +127,23 @@ export function AutocompleteInput({ value, onChange, placeholder, disabled }: Pr
           border: "1px solid rgba(0,150,255,0.3)",
           borderRadius: "8px",
           overflow: "hidden",
+          maxHeight: "260px",
+          overflowY: "auto",
           boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
         }}>
-          {suggestions.map((c, i) => (
+          {suggestions.map((s, i) => (
             <button
-              key={c.id}
+              key={`${s.kind}-${s.id}`}
               type="button"
-              onMouseDown={() => select(c)}
+              onMouseDown={() => select(s)}
               onMouseEnter={() => setActiveIndex(i)}
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "8px",
+                gap: "9px",
                 width: "100%",
                 textAlign: "left",
-                padding: "9px 14px",
+                padding: "7px 14px",
                 border: "none",
                 fontSize: "13px",
                 cursor: "pointer",
@@ -147,11 +152,13 @@ export function AutocompleteInput({ value, onChange, placeholder, disabled }: Pr
                 color: i === activeIndex ? "#e8f4ff" : "rgba(180,215,250,0.85)",
               }}
             >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, opacity: 0.5 }}>
-                <circle cx="6" cy="4" r="2.5" stroke="currentColor" strokeWidth="1.2" />
-                <path d="M1 11c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-              </svg>
-              {c.firstName} {c.lastName}
+              <Avatar
+                url={s.kind === "user" ? s.profilePictureUrl : null}
+                firstName={s.firstName}
+                lastName={s.lastName}
+                size={22}
+              />
+              <span>{s.firstName} {s.lastName}</span>
             </button>
           ))}
         </div>

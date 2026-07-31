@@ -22,18 +22,166 @@ enum RecipientType {
   TEAM_STAFF
 }
 
+enum RoleName {
+  REFEREE
+  ADMINISTRATOR
+  ASSIGNOR
+  MENTOR
+  TEAM_STAFF
+}
+
 model User {
-  id         Int         @id @default(autoincrement())
-  firstName  String
-  lastName   String
-  username   String      @unique
-  password   String
-  ussfId     String?
-  aysoId     String?
-  colleagues Colleague[]
-  sessions   Session[]
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  id           Int           @id @default(autoincrement())
+  firstName    String
+  lastName     String
+  username     String        @unique
+  password     String
+  cognitoSub   String?       @unique
+  email        String        @unique
+  phone        String?
+  ussfId       String?
+  aysoId       String?
+  profilePictureKey String?
+  colleagues   Colleague[]
+  sessions     Session[]
+  matchReports MatchReport[]
+  roles        Role[]
+  apiTokens    ApiToken[]
+  notifications Notification[]
+  invitesSent  Invite[]
+  eulaAcceptances EulaAcceptance[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+// Per-user bearer tokens — authenticate both the MCP server and the external
+// REST API (src/app/api/v1/**). Only the SHA-256 hash is stored — the
+// plaintext is shown once at creation and never persisted or retrievable again.
+model ApiToken {
+  id         Int       @id @default(autoincrement())
+  tokenHash  String    @unique
+  userId     Int
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label      String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+}
+
+// Admin-issued signup invitations. Only the SHA-256 hash of the code is
+// stored (shown once, in the email). A code is single-use, tied to the
+// specific email it was sent to, and expires one week after creation —
+// signup validates all three before accepting it.
+model Invite {
+  id          Int       @id @default(autoincrement())
+  email       String
+  codeHash    String    @unique
+  invitedById Int
+  invitedBy   User      @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  consumedAt  DateTime?
+
+  @@index([email])
+}
+
+// Per-user notifications shown in the app. Pure infrastructure for now — no
+// event in the app creates one of these yet; a future feature hooks in by
+// inserting rows here.
+model Notification {
+  id              Int            @id @default(autoincrement())
+  userId          Int
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message         String
+  link            String?
+  // Drives special interactive rendering (e.g. "feedback_offer" shows
+  // accept/reject/flag actions) — null means a plain informational row.
+  kind            String?
+  // True for site-wide admin alerts (e.g. flagged feedback) — kept out of a
+  // user's personal notification list even if they also hold ADMINISTRATOR,
+  // since the two inboxes are intentionally separate (see Sidebar).
+  isAdminAlert    Boolean        @default(false)
+  feedbackOfferId Int?
+  feedbackOffer   FeedbackOffer? @relation(fields: [feedbackOfferId], references: [id], onDelete: Cascade)
+  createdAt       DateTime       @default(now())
+  readAt          DateTime?
+
+  @@index([userId])
+  @@index([userId, readAt])
+  @@index([feedbackOfferId])
+}
+
+enum FeedbackOfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+// A "feedbackFor{Position}" comment one referee writes about another crew
+// member isn't written directly onto that member's own report — it sits
+// here until they explicitly accept it (see Notification), so one referee
+// can't put words in another's mouth on a report that isn't theirs.
+model FeedbackOffer {
+  id              Int                 @id @default(autoincrement())
+  fromReportId    Int
+  fromReport      MatchReport         @relation("FeedbackOfferFrom", fields: [fromReportId], references: [id], onDelete: Cascade)
+  toReportId      Int
+  toReport        MatchReport         @relation("FeedbackOfferTo", fields: [toReportId], references: [id], onDelete: Cascade)
+  text            String
+  status          FeedbackOfferStatus @default(PENDING)
+  rejectionReason String?
+  flaggedAt       DateTime?
+  flagReason      String?
+  createdAt       DateTime            @default(now())
+  decidedAt       DateTime?
+  notifications   Notification[]
+
+  @@index([toReportId])
+}
+
+// Versioned EULA text. A new row is inserted (never edited in place) whenever
+// the agreement changes, so past acceptances stay tied to what was actually
+// agreed to.
+model Eula {
+  id          Int              @id @default(autoincrement())
+  version     Int              @unique
+  content     String           @db.Text
+  createdAt   DateTime         @default(now())
+  acceptances EulaAcceptance[]
+}
+
+// One row per (user, EULA version) acceptance — an audit trail, not just a
+// "latest version accepted" flag, so history of what was agreed to and when
+// is preserved across re-acceptances.
+model EulaAcceptance {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eulaId     Int
+  eula       Eula     @relation(fields: [eulaId], references: [id])
+  acceptedAt DateTime @default(now())
+
+  @@unique([userId, eulaId])
+}
+
+// Fixed set of 5 shared roles (seeded once). Many-to-many with User: a role
+// is held by many users, and a user can hold several roles at once.
+model Role {
+  id    Int      @id @default(autoincrement())
+  name  RoleName @unique
+  users User[]
+}
+
+// Cognito access tokens are verified locally (stateless JWT check) for speed,
+// which means Cognito-side revocation (GlobalSignOut on logout) isn't visible
+// to that check on its own — a signed-out token stays "valid" until it
+// naturally expires otherwise. This table closes that gap: invalidate() logs
+// the token's jti here, and resolveSession() checks it after JWT verification
+// succeeds. Only relevant for AUTH_PROVIDER=cognito.
+model RevokedToken {
+  jti       String   @id
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 }
 
 model Session {
@@ -60,21 +208,41 @@ model Position {
   matchReports MatchReport[]
 }
 
+// Facts about the game itself — shared across everyone who reports on it.
+// Independent of any one person's report: date, teams, crew, and what
+// happened (misconducts) are properties of the match, not the reporter.
+model Match {
+  id              Int           @id @default(autoincrement())
+  matchDate       DateTime      @db.Date
+  matchTime       DateTime      @db.Time
+  location        String
+  homeTeam        String
+  awayTeam        String
+  league          String
+  ageGroup        String
+  refereeCrewName String?
+  ar1CrewName     String?
+  ar2CrewName     String?
+  fourthCrewName  String?
+  matchReports    MatchReport[]
+  misconducts     Misconduct[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([matchDate])
+}
+
+// One user's personal report about a match they worked — their position,
+// crew feedback, and development reflection. Multiple users can each have
+// their own MatchReport pointing at the same Match.
 model MatchReport {
-  id                Int      @id @default(autoincrement())
-  matchDate         DateTime @db.Date
-  matchTime         DateTime @db.Time
-  location          String
-  homeTeam          String
-  awayTeam          String
-  league            String
-  ageGroup          String
-  positionId        Int
-  position          Position @relation(fields: [positionId], references: [id])
-  refereeCrewName      String?
-  ar1CrewName          String?
-  ar2CrewName          String?
-  fourthCrewName       String?
+  id                   Int      @id @default(autoincrement())
+  userId               Int
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matchId              Int
+  match                Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  positionId           Int
+  position             Position @relation(fields: [positionId], references: [id])
   feedbackFromReferee  String?
   feedbackFromAr1      String?
   feedbackFromAr2      String?
@@ -90,15 +258,24 @@ model MatchReport {
   toImprove1           String?
   toImprove2           String?
   toImprove3           String?
-  misconducts          Misconduct[]
+  feedbackOffersSent     FeedbackOffer[] @relation("FeedbackOfferFrom")
+  feedbackOffersReceived FeedbackOffer[] @relation("FeedbackOfferTo")
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+
+  @@index([userId])
+  @@index([matchId])
+  @@unique([userId, matchId])
+  @@unique([matchId, positionId])
 }
 
+// Cautions/send-offs — a fact about the match. Only the report filed under
+// the "Referee" position for a given match may create/delete these (enforced
+// in the API layer, not just the UI).
 model Misconduct {
   id            Int            @id @default(autoincrement())
-  matchReportId Int
-  matchReport   MatchReport    @relation(fields: [matchReportId], references: [id], onDelete: Cascade)
+  matchId       Int
+  match         Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
   type          MisconductType
   recipientType RecipientType
   minute        Int

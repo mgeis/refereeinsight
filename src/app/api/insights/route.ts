@@ -1,17 +1,19 @@
 import { spawn } from "child_process";
 import { NextRequest } from "next/server";
 import { getPrisma } from "@/lib/db";
+import { getSessionUserId } from "@/lib/session";
+import { logEvent } from "@/lib/events";
 
 function serializeReport(r: Awaited<ReturnType<typeof fetchReports>>[number], index: number) {
-  const date = new Date(r.matchDate).toISOString().slice(0, 10);
-  const time = new Date(r.matchTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+  const date = new Date(r.match.matchDate).toISOString().slice(0, 10);
+  const time = new Date(r.match.matchTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
 
   const crew: string[] = [];
   const crewMap = [
-    { pos: "Referee",             name: r.refereeCrewName,  from: r.feedbackFromReferee, for: r.feedbackForReferee },
-    { pos: "Assistant Referee 1", name: r.ar1CrewName,      from: r.feedbackFromAr1,     for: r.feedbackForAr1     },
-    { pos: "Assistant Referee 2", name: r.ar2CrewName,      from: r.feedbackFromAr2,     for: r.feedbackForAr2     },
-    { pos: "4th Official",        name: r.fourthCrewName,   from: r.feedbackFromFourth,  for: r.feedbackForFourth  },
+    { pos: "Referee",             name: r.match.refereeCrewName,  from: r.feedbackFromReferee, for: r.feedbackForReferee },
+    { pos: "Assistant Referee 1", name: r.match.ar1CrewName,      from: r.feedbackFromAr1,     for: r.feedbackForAr1     },
+    { pos: "Assistant Referee 2", name: r.match.ar2CrewName,      from: r.feedbackFromAr2,     for: r.feedbackForAr2     },
+    { pos: "4th Official",        name: r.match.fourthCrewName,   from: r.feedbackFromFourth,  for: r.feedbackForFourth  },
   ];
   for (const c of crewMap) {
     if (!c.name || c.name === "N/A") continue;
@@ -23,14 +25,14 @@ function serializeReport(r: Awaited<ReturnType<typeof fetchReports>>[number], in
 
   const wentWell  = [r.wentWell1,  r.wentWell2,  r.wentWell3].filter(Boolean);
   const toImprove = [r.toImprove1, r.toImprove2, r.toImprove3].filter(Boolean);
-  const cards     = r.misconducts.map(m =>
+  const cards     = r.match.misconducts.map(m =>
     `${m.type} (${m.recipientType === "PLAYER" ? "Player" : "Staff"} #${m.number ?? "?"} ${m.name}, ${m.minute}') – ${m.reason}`
   );
 
   return [
     `Match ${index + 1} — Report #${r.id}`,
     `Date: ${date} at ${time}`,
-    `${r.homeTeam} vs ${r.awayTeam} | ${r.league} | ${r.ageGroup}`,
+    `${r.match.homeTeam} vs ${r.match.awayTeam} | ${r.match.league} | ${r.match.ageGroup}`,
     `My position: ${r.position.name}`,
     crew.length     ? `Crew:\n${crew.join("\n")}`                          : null,
     wentWell.length ? `Went well:\n${wentWell.map(w => `  • ${w}`).join("\n")}`    : null,
@@ -40,11 +42,15 @@ function serializeReport(r: Awaited<ReturnType<typeof fetchReports>>[number], in
   ].filter(Boolean).join("\n");
 }
 
-async function fetchReports(limit: number) {
+async function fetchReports(userId: number, limit: number) {
   const prisma = await getPrisma();
   return prisma.matchReport.findMany({
-    include: { position: true, misconducts: { orderBy: { minute: "asc" } } },
-    orderBy: [{ matchDate: "desc" }, { matchTime: "desc" }],
+    where: { userId },
+    include: {
+      position: true,
+      match: { include: { misconducts: { orderBy: { minute: "asc" } } } },
+    },
+    orderBy: [{ match: { matchDate: "desc" } }, { match: { matchTime: "desc" } }],
     take: limit,
   });
 }
@@ -52,13 +58,18 @@ async function fetchReports(limit: number) {
 const CLAUDE_BIN = "/Users/mgeis/.local/bin/claude";
 
 export async function POST(req: NextRequest) {
+  const userId = await getSessionUserId(req);
+  if (!userId) return new Response("Not authenticated.", { status: 401 });
+
   const { question, limit = 20 } = await req.json();
 
   if (!question?.trim()) {
     return new Response("No question provided.", { status: 400 });
   }
 
-  const reports = await fetchReports(limit);
+  logEvent("AI_INSIGHTS_REQUESTED", { userId, question: question.trim() });
+
+  const reports = await fetchReports(userId, limit);
 
   if (reports.length === 0) {
     return new Response("No match reports found. Add some reports first.", { status: 200 });

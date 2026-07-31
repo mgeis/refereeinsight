@@ -15,8 +15,9 @@ export type MisconductRecord = {
 };
 
 type Props = {
-  matchReportId: number;
+  matchId: number;
   initialMisconducts: MisconductRecord[];
+  readOnly?: boolean;
 };
 
 function CardBadge({ type }: { type: "CAUTION" | "SENDOFF" }) {
@@ -30,7 +31,7 @@ function CardBadge({ type }: { type: "CAUTION" | "SENDOFF" }) {
   );
 }
 
-function MisconductRow({ m, onDelete }: { m: MisconductRecord; onDelete: () => void }) {
+function MisconductRow({ m, onDelete }: { m: MisconductRecord; onDelete?: () => void }) {
   const isCaution = m.type === "CAUTION";
   const accentColor = isCaution ? "#f5c400" : "#ff4d4d";
   return (
@@ -53,18 +54,20 @@ function MisconductRow({ m, onDelete }: { m: MisconductRecord; onDelete: () => v
         <div style={{ fontSize: "12px", color: "rgba(140,180,220,0.6)", marginTop: "3px" }}>{m.reason}</div>
         {m.description && <div style={{ fontSize: "12px", color: "rgba(120,160,200,0.5)", marginTop: "4px", fontStyle: "italic" }}>{m.description}</div>}
       </div>
-      <button
-        onClick={onDelete}
-        title="Remove"
-        style={{ background: "transparent", border: "none", color: "rgba(120,160,200,0.35)", cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: "2px 4px", flexShrink: 0 }}
-      >
-        ×
-      </button>
+      {onDelete && (
+        <button
+          onClick={onDelete}
+          title="Remove"
+          style={{ background: "transparent", border: "none", color: "rgba(120,160,200,0.35)", cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: "2px 4px", flexShrink: 0 }}
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 }
 
-export function MisconductSection({ matchReportId, initialMisconducts }: Props) {
+export function MisconductSection({ matchId, initialMisconducts, readOnly = false }: Props) {
   const [misconducts, setMisconducts] = useState<MisconductRecord[]>(
     [...initialMisconducts].sort((a, b) => a.minute - b.minute)
   );
@@ -74,7 +77,7 @@ export function MisconductSection({ matchReportId, initialMisconducts }: Props) 
   async function handleAdd(data: MisconductData) {
     setError("");
     try {
-      const res = await fetch(`/api/match-reports/${matchReportId}/misconducts`, {
+      const res = await fetch(`/api/matches/${matchId}/misconducts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -94,7 +97,7 @@ export function MisconductSection({ matchReportId, initialMisconducts }: Props) 
   async function handleDelete(id: number) {
     setError("");
     try {
-      const res = await fetch(`/api/match-reports/${matchReportId}/misconducts/${id}`, {
+      const res = await fetch(`/api/matches/${matchId}/misconducts/${id}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -109,32 +112,34 @@ export function MisconductSection({ matchReportId, initialMisconducts }: Props) 
 
   return (
     <div>
-      <div style={{ display: "flex", gap: "10px", marginBottom: misconducts.length > 0 ? "14px" : "0" }}>
-        <button
-          type="button"
-          onClick={() => setModalType("CAUTION")}
-          style={{
-            padding: "8px 16px", borderRadius: "8px", cursor: "pointer",
-            fontSize: "12px", fontWeight: 700, letterSpacing: "0.07em",
-            background: "rgba(245,196,0,0.1)", border: "1px solid rgba(245,196,0,0.3)",
-            color: "#f5c400",
-          }}
-        >
-          + CAUTION
-        </button>
-        <button
-          type="button"
-          onClick={() => setModalType("SENDOFF")}
-          style={{
-            padding: "8px 16px", borderRadius: "8px", cursor: "pointer",
-            fontSize: "12px", fontWeight: 700, letterSpacing: "0.07em",
-            background: "rgba(255,77,77,0.1)", border: "1px solid rgba(255,77,77,0.3)",
-            color: "#ff4d4d",
-          }}
-        >
-          + SEND-OFF
-        </button>
-      </div>
+      {!readOnly && (
+        <div style={{ display: "flex", gap: "10px", marginBottom: misconducts.length > 0 ? "14px" : "0" }}>
+          <button
+            type="button"
+            onClick={() => setModalType("CAUTION")}
+            style={{
+              padding: "8px 16px", borderRadius: "8px", cursor: "pointer",
+              fontSize: "12px", fontWeight: 700, letterSpacing: "0.07em",
+              background: "rgba(245,196,0,0.1)", border: "1px solid rgba(245,196,0,0.3)",
+              color: "#f5c400",
+            }}
+          >
+            + CAUTION
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalType("SENDOFF")}
+            style={{
+              padding: "8px 16px", borderRadius: "8px", cursor: "pointer",
+              fontSize: "12px", fontWeight: 700, letterSpacing: "0.07em",
+              background: "rgba(255,77,77,0.1)", border: "1px solid rgba(255,77,77,0.3)",
+              color: "#ff4d4d",
+            }}
+          >
+            + SEND-OFF
+          </button>
+        </div>
+      )}
 
       {misconducts.length === 0 ? (
         <p style={{ fontSize: "13px", color: "rgba(120,160,200,0.4)", fontStyle: "italic", margin: "10px 0 0" }}>
@@ -143,7 +148,7 @@ export function MisconductSection({ matchReportId, initialMisconducts }: Props) 
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {misconducts.map(m => (
-            <MisconductRow key={m.id} m={m} onDelete={() => handleDelete(m.id)} />
+            <MisconductRow key={m.id} m={m} onDelete={readOnly ? undefined : () => handleDelete(m.id)} />
           ))}
         </div>
       )}

@@ -1,20 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
-const NAV_ITEMS = [
-  {
-    href: "/dashboard/profile",
-    label: "Profile",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <circle cx="10" cy="7" r="3.5" stroke="currentColor" strokeWidth="1.5" />
-        <path d="M3 17c0-3.314 3.134-6 7-6s7 2.686 7 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    ),
-  },
+const PROFILE_ITEM = {
+  href: "/dashboard/profile",
+  label: "Profile",
+  icon: (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <circle cx="10" cy="7" r="3.5" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M3 17c0-3.314 3.134-6 7-6s7 2.686 7 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  ),
+};
+
+const NOTIFICATIONS_ITEM = {
+  href: "/dashboard/notifications",
+  label: "Notifications",
+  icon: (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <path d="M5 8a5 5 0 0 1 10 0c0 3 1 4.5 1.5 5H3.5C4 12.5 5 11 5 8Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 15.5a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  ),
+};
+
+const REFEREE_ITEMS = [
   {
     href: "/dashboard/add-report",
     label: "Add Match Report",
@@ -59,10 +71,95 @@ const NAV_ITEMS = [
   },
 ];
 
-export function Sidebar() {
+// "Users", "Invites", "Match Reports", and "Notifications" are wired up;
+// the rest are placeholders — not linked yet.
+const ADMIN_ITEMS: { label: string; href?: string }[] = [
+  { label: "Users", href: "/dashboard/admin/users" },
+  { label: "Invites", href: "/dashboard/admin/invites" },
+  { label: "Match Reports", href: "/dashboard/admin/reports" },
+  { label: "Notifications", href: "/dashboard/admin/notifications" },
+  { label: "Data" },
+  { label: "Insights" },
+];
+
+const ALL_LINKED_ITEMS = [
+  PROFILE_ITEM,
+  NOTIFICATIONS_ITEM,
+  ...REFEREE_ITEMS,
+  ...ADMIN_ITEMS.filter((i): i is { label: string; href: string } => !!i.href),
+];
+
+function CaretIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="14" height="14" viewBox="0 0 14 14" fill="none"
+      style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s" }}
+    >
+      <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function SectionHeading({
+  label, open, onToggle,
+}: { label: string; open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        width: "100%",
+        padding: "8px 14px",
+        marginTop: "8px",
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        fontSize: "11px",
+        fontWeight: 600,
+        letterSpacing: "0.1em",
+        color: "rgba(100,150,200,0.6)",
+      }}
+    >
+      {label.toUpperCase()}
+      <CaretIcon open={open} />
+    </button>
+  );
+}
+
+export function Sidebar({ roles }: { roles: string[] }) {
   const pathname = usePathname();
   const router   = useRouter();
   const [open, setOpen] = useState(false);
+  const [refereeOpen, setRefereeOpen] = useState(true);
+  const [adminOpen, setAdminOpen] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [adminUnreadCount, setAdminUnreadCount] = useState(0);
+
+  const isReferee = roles.includes("REFEREE");
+  const isAdmin   = roles.includes("ADMINISTRATOR");
+
+  // Re-fetched on every navigation, and whenever a notifications page marks
+  // something read in place (no navigation involved in that case). Personal
+  // and admin counts are separate inboxes, fetched independently.
+  useEffect(() => {
+    function refresh() {
+      fetch("/api/notifications/unread-count")
+        .then(r => r.json())
+        .then(data => setUnreadCount(data.count ?? 0))
+        .catch(() => {});
+      if (isAdmin) {
+        fetch("/api/notifications/unread-count?scope=admin")
+          .then(r => r.json())
+          .then(data => setAdminUnreadCount(data.count ?? 0))
+          .catch(() => {});
+      }
+    }
+    refresh();
+    window.addEventListener("notifications:refresh", refresh);
+    return () => window.removeEventListener("notifications:refresh", refresh);
+  }, [pathname, isAdmin]);
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
@@ -70,7 +167,7 @@ export function Sidebar() {
   }
 
   const currentLabel =
-    NAV_ITEMS.find((i) => pathname.startsWith(i.href))?.label ?? "Dashboard";
+    ALL_LINKED_ITEMS.find((i) => pathname.startsWith(i.href))?.label ?? "Dashboard";
 
   return (
     <>
@@ -113,9 +210,26 @@ export function Sidebar() {
           {currentLabel.toUpperCase()}
         </span>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#00d2ff", boxShadow: "0 0 8px #00d2ff", display: "inline-block" }} />
-          <span style={{ fontSize: "11px", color: "rgba(100,160,210,0.6)", letterSpacing: "0.08em" }}>ONLINE</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "18px" }}>
+          <Link
+            href="/dashboard/help"
+            style={{
+              display: "flex", alignItems: "center", gap: "6px",
+              fontSize: "12px", letterSpacing: "0.04em", color: "rgba(160,200,240,0.75)",
+              textDecoration: "none",
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+              <circle cx="7.5" cy="7.5" r="6.5" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M5.7 5.8a1.8 1.8 0 1 1 2.6 1.6c-.6.3-.8.6-.8 1.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+              <circle cx="7.5" cy="10.7" r="0.5" fill="currentColor" />
+            </svg>
+            Help
+          </Link>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#00d2ff", boxShadow: "0 0 8px #00d2ff", display: "inline-block" }} />
+            <span style={{ fontSize: "11px", color: "rgba(100,160,210,0.6)", letterSpacing: "0.08em" }}>ONLINE</span>
+          </div>
         </div>
       </header>
 
@@ -165,12 +279,11 @@ export function Sidebar() {
 
         {/* Nav */}
         <nav className="relative z-10 flex flex-col gap-1 px-3 py-6 flex-1">
-          {NAV_ITEMS.map((item) => {
-            const isActive = pathname.startsWith(item.href);
+          {(() => {
+            const isActive = pathname.startsWith(PROFILE_ITEM.href);
             return (
               <Link
-                key={item.href}
-                href={item.href}
+                href={PROFILE_ITEM.href}
                 onClick={() => setOpen(false)}
                 style={{
                   display: "flex",
@@ -190,14 +303,163 @@ export function Sidebar() {
                   boxShadow: isActive ? "inset 0 0 0 1px rgba(0,180,255,0.2)" : "none",
                 }}
               >
-                <span style={{ opacity: isActive ? 1 : 0.6 }}>{item.icon}</span>
-                {item.label}
+                <span style={{ opacity: isActive ? 1 : 0.6 }}>{PROFILE_ITEM.icon}</span>
+                {PROFILE_ITEM.label}
                 {isActive && (
                   <span style={{ marginLeft: "auto", width: "4px", height: "4px", borderRadius: "50%", background: "#00d2ff", boxShadow: "0 0 6px #00d2ff" }} />
                 )}
               </Link>
             );
-          })}
+          })()}
+
+          {(() => {
+            const isActive = pathname.startsWith(NOTIFICATIONS_ITEM.href);
+            return (
+              <Link
+                href={NOTIFICATIONS_ITEM.href}
+                onClick={() => setOpen(false)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  fontWeight: isActive ? 600 : 400,
+                  letterSpacing: "0.02em",
+                  textDecoration: "none",
+                  transition: "all 0.15s",
+                  background: isActive
+                    ? "linear-gradient(135deg, rgba(0,80,200,0.35), rgba(0,180,255,0.15))"
+                    : "transparent",
+                  color: isActive ? "#00d2ff" : "rgba(160,200,240,0.7)",
+                  boxShadow: isActive ? "inset 0 0 0 1px rgba(0,180,255,0.2)" : "none",
+                }}
+              >
+                <span style={{ opacity: isActive ? 1 : 0.6 }}>{NOTIFICATIONS_ITEM.icon}</span>
+                {NOTIFICATIONS_ITEM.label}
+                {unreadCount > 0 && (
+                  <span style={{
+                    marginLeft: "auto", minWidth: "18px", height: "18px", padding: "0 5px", borderRadius: "9px",
+                    background: "#ff4d4d", color: "#fff", fontSize: "10px", fontWeight: 700,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    boxShadow: "0 0 6px rgba(255,60,60,0.5)",
+                  }}>
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </Link>
+            );
+          })()}
+
+          {isReferee && (
+            <>
+              <SectionHeading label="Referee" open={refereeOpen} onToggle={() => setRefereeOpen(v => !v)} />
+              {refereeOpen && REFEREE_ITEMS.map((item) => {
+                const isActive = pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setOpen(false)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      padding: "10px 14px",
+                      borderRadius: "8px",
+                      fontSize: "13px",
+                      fontWeight: isActive ? 600 : 400,
+                      letterSpacing: "0.02em",
+                      textDecoration: "none",
+                      transition: "all 0.15s",
+                      background: isActive
+                        ? "linear-gradient(135deg, rgba(0,80,200,0.35), rgba(0,180,255,0.15))"
+                        : "transparent",
+                      color: isActive ? "#00d2ff" : "rgba(160,200,240,0.7)",
+                      boxShadow: isActive ? "inset 0 0 0 1px rgba(0,180,255,0.2)" : "none",
+                    }}
+                  >
+                    <span style={{ opacity: isActive ? 1 : 0.6 }}>{item.icon}</span>
+                    {item.label}
+                    {isActive && (
+                      <span style={{ marginLeft: "auto", width: "4px", height: "4px", borderRadius: "50%", background: "#00d2ff", boxShadow: "0 0 6px #00d2ff" }} />
+                    )}
+                  </Link>
+                );
+              })}
+            </>
+          )}
+
+          {isAdmin && (
+            <>
+              <SectionHeading label="Admin" open={adminOpen} onToggle={() => setAdminOpen(v => !v)} />
+              {adminOpen && ADMIN_ITEMS.map((item) => {
+                if (!item.href) {
+                  return (
+                    <div
+                      key={item.label}
+                      title="Coming soon"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        padding: "10px 14px",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        letterSpacing: "0.02em",
+                        color: "rgba(160,200,240,0.3)",
+                        cursor: "default",
+                      }}
+                    >
+                      {item.label}
+                    </div>
+                  );
+                }
+                const isActive = pathname.startsWith(item.href);
+                const showBadge = item.label === "Notifications" && adminUnreadCount > 0;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setOpen(false)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      padding: "10px 14px",
+                      borderRadius: "8px",
+                      fontSize: "13px",
+                      fontWeight: isActive ? 600 : 400,
+                      letterSpacing: "0.02em",
+                      textDecoration: "none",
+                      transition: "all 0.15s",
+                      background: isActive
+                        ? "linear-gradient(135deg, rgba(0,80,200,0.35), rgba(0,180,255,0.15))"
+                        : "transparent",
+                      color: isActive ? "#00d2ff" : "rgba(160,200,240,0.7)",
+                      boxShadow: isActive ? "inset 0 0 0 1px rgba(0,180,255,0.2)" : "none",
+                    }}
+                  >
+                    {item.label}
+                    {showBadge && (
+                      <span style={{
+                        marginLeft: "auto", minWidth: "18px", height: "18px", padding: "0 5px", borderRadius: "9px",
+                        background: "#ff4d4d", color: "#fff", fontSize: "10px", fontWeight: 700,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        boxShadow: "0 0 6px rgba(255,60,60,0.5)",
+                      }}>
+                        {adminUnreadCount > 99 ? "99+" : adminUnreadCount}
+                      </span>
+                    )}
+                    {isActive && !showBadge && (
+                      <span style={{ marginLeft: "auto", width: "4px", height: "4px", borderRadius: "50%", background: "#00d2ff", boxShadow: "0 0 6px #00d2ff" }} />
+                    )}
+                  </Link>
+                );
+              })}
+            </>
+          )}
         </nav>
 
         {/* Log Out */}

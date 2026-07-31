@@ -2,11 +2,208 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { PasswordInput } from "@/components/PasswordInput";
+
+const fieldInputStyle: React.CSSProperties = {
+  background: "rgba(0,30,60,0.6)",
+  border: "1px solid rgba(0,150,255,0.25)",
+  borderRadius: "8px",
+  padding: "12px 16px",
+  color: "#e8f4ff",
+  fontSize: "14px",
+  outline: "none",
+  width: "100%",
+  boxSizing: "border-box",
+};
+
+const fieldLabelStyle: React.CSSProperties = {
+  fontSize: "12px",
+  letterSpacing: "0.08em",
+  color: "rgba(140,180,220,0.8)",
+};
+
+const errorBannerStyle: React.CSSProperties = {
+  background: "rgba(255,60,60,0.1)",
+  border: "1px solid rgba(255,80,80,0.3)",
+  borderRadius: "8px",
+  padding: "10px 14px",
+  fontSize: "13px",
+  color: "#ff8080",
+};
+
+const successBannerStyle: React.CSSProperties = {
+  background: "rgba(0,200,100,0.1)",
+  border: "1px solid rgba(0,200,100,0.3)",
+  borderRadius: "8px",
+  padding: "10px 14px",
+  fontSize: "13px",
+  color: "#60d890",
+};
+
+const submitButtonStyle = (loading: boolean): React.CSSProperties => ({
+  marginTop: "8px",
+  padding: "13px",
+  borderRadius: "8px",
+  background: loading ? "rgba(0,80,160,0.5)" : "linear-gradient(135deg, #0055cc, #0099ee)",
+  color: "#fff",
+  fontWeight: 600,
+  fontSize: "14px",
+  letterSpacing: "0.06em",
+  border: "none",
+  cursor: loading ? "not-allowed" : "pointer",
+  boxShadow: loading ? "none" : "0 0 24px rgba(0,120,255,0.3)",
+  opacity: loading ? 0.7 : 1,
+});
+
+const linkButtonStyle: React.CSSProperties = {
+  background: "none",
+  border: "none",
+  color: "rgba(0,180,255,0.7)",
+  fontSize: "12px",
+  cursor: "pointer",
+  padding: 0,
+  textAlign: "left",
+};
+
+type Mode = "login" | "forgot-request" | "forgot-confirm";
+
+function ForgotPasswordFlow({ onDone }: { onDone: (message: string) => void }) {
+  const [mode, setMode] = useState<Mode>("forgot-request");
+  const [username, setUsername] = useState("");
+  const [code, setCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [info, setInfo] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleRequest(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username }),
+      });
+      const data = await res.json();
+      setInfo(data.message ?? "If that account exists, a reset code has been sent.");
+      setMode("forgot-confirm");
+    } catch {
+      setError("Unable to connect. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleConfirm(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (newPassword !== confirm) {
+      setError("New password and confirmation do not match.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, code, newPassword }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        onDone("Password reset. Sign in with your new password.");
+      } else {
+        setError(data.error ?? "Failed to reset password.");
+      }
+    } catch {
+      setError("Unable to connect. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (mode === "forgot-request") {
+    return (
+      <form className="flex flex-col gap-5" onSubmit={handleRequest}>
+        <p style={{ fontSize: "13px", color: "rgba(140,180,220,0.7)" }}>
+          Enter your username and we&apos;ll email a reset code to the address on file.
+        </p>
+        <div className="flex flex-col gap-1.5">
+          <label style={fieldLabelStyle}>USERNAME</label>
+          <input
+            type="text"
+            value={username}
+            onChange={e => setUsername(e.target.value)}
+            required
+            autoComplete="username"
+            style={fieldInputStyle}
+          />
+        </div>
+        {error && <div style={errorBannerStyle}>{error}</div>}
+        <button type="submit" disabled={loading} style={submitButtonStyle(loading)}>
+          {loading ? "SENDING…" : "SEND RESET CODE"}
+        </button>
+        <button type="button" style={linkButtonStyle} onClick={() => onDone("")}>
+          ← Back to sign in
+        </button>
+      </form>
+    );
+  }
+
+  return (
+    <form className="flex flex-col gap-5" onSubmit={handleConfirm}>
+      {info && <div style={successBannerStyle}>{info}</div>}
+      <div className="flex flex-col gap-1.5">
+        <label style={fieldLabelStyle}>RESET CODE</label>
+        <input
+          type="text"
+          value={code}
+          onChange={e => setCode(e.target.value)}
+          required
+          placeholder="Code from your email"
+          style={fieldInputStyle}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label style={fieldLabelStyle}>NEW PASSWORD</label>
+        <PasswordInput
+          value={newPassword}
+          onChange={e => setNewPassword(e.target.value)}
+          required
+          autoComplete="new-password"
+          style={fieldInputStyle}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label style={fieldLabelStyle}>CONFIRM NEW PASSWORD</label>
+        <PasswordInput
+          value={confirm}
+          onChange={e => setConfirm(e.target.value)}
+          required
+          autoComplete="new-password"
+          style={fieldInputStyle}
+        />
+      </div>
+      {error && <div style={errorBannerStyle}>{error}</div>}
+      <button type="submit" disabled={loading} style={submitButtonStyle(loading)}>
+        {loading ? "RESETTING…" : "RESET PASSWORD"}
+      </button>
+      <button type="button" style={linkButtonStyle} onClick={() => onDone("")}>
+        ← Back to sign in
+      </button>
+    </form>
+  );
+}
 
 export default function Home() {
   const router = useRouter();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"login" | "forgot">("login");
+  const [notice, setNotice] = useState("");
 
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -203,93 +400,74 @@ export default function Home() {
           </div>
 
           <h1 style={{ color: "#e8f4ff", fontSize: "26px", fontWeight: 700, marginBottom: "6px" }}>
-            Sign in
+            {mode === "login" ? "Sign in" : "Reset password"}
           </h1>
           <p style={{ color: "rgba(140,180,220,0.7)", fontSize: "14px", marginBottom: "32px" }}>
-            Access your game reports and analytics
+            {mode === "login" ? "Access your game reports and analytics" : "We'll help you get back in"}
           </p>
 
-          <form className="flex flex-col gap-5" onSubmit={handleLogin}>
-            <div className="flex flex-col gap-1.5">
-              <label style={{ fontSize: "12px", letterSpacing: "0.08em", color: "rgba(140,180,220,0.8)" }}>
-                USERNAME
-              </label>
-              <input
-                type="text"
-                name="username"
-                autoComplete="username"
-                placeholder="Enter your username"
-                required
-                style={{
-                  background: "rgba(0,30,60,0.6)",
-                  border: "1px solid rgba(0,150,255,0.25)",
-                  borderRadius: "8px",
-                  padding: "12px 16px",
-                  color: "#e8f4ff",
-                  fontSize: "14px",
-                  outline: "none",
-                }}
-              />
-            </div>
+          {notice && mode === "login" && (
+            <div style={{ ...successBannerStyle, marginBottom: "20px" }}>{notice}</div>
+          )}
 
-            <div className="flex flex-col gap-1.5">
-              <label style={{ fontSize: "12px", letterSpacing: "0.08em", color: "rgba(140,180,220,0.8)" }}>
-                PASSWORD
-              </label>
-              <input
-                type="password"
-                name="password"
-                autoComplete="current-password"
-                placeholder="Enter your password"
-                required
-                style={{
-                  background: "rgba(0,30,60,0.6)",
-                  border: "1px solid rgba(0,150,255,0.25)",
-                  borderRadius: "8px",
-                  padding: "12px 16px",
-                  color: "#e8f4ff",
-                  fontSize: "14px",
-                  outline: "none",
-                }}
-              />
-            </div>
+          {mode === "login" ? (
+            <>
+              <form className="flex flex-col gap-5" onSubmit={handleLogin}>
+                <div className="flex flex-col gap-1.5">
+                  <label style={fieldLabelStyle}>USERNAME</label>
+                  <input
+                    type="text"
+                    name="username"
+                    autoComplete="username"
+                    placeholder="Enter your username"
+                    required
+                    style={fieldInputStyle}
+                  />
+                </div>
 
-            {error && (
-              <div style={{
-                background: "rgba(255,60,60,0.1)",
-                border: "1px solid rgba(255,80,80,0.3)",
-                borderRadius: "8px",
-                padding: "10px 14px",
-                fontSize: "13px",
-                color: "#ff8080",
-              }}>
-                {error}
+                <div className="flex flex-col gap-1.5">
+                  <label style={fieldLabelStyle}>PASSWORD</label>
+                  <PasswordInput
+                    name="password"
+                    autoComplete="current-password"
+                    placeholder="Enter your password"
+                    required
+                    style={fieldInputStyle}
+                  />
+                </div>
+
+                {error && <div style={errorBannerStyle}>{error}</div>}
+
+                <button type="submit" disabled={loading} style={submitButtonStyle(loading)}>
+                  {loading ? "SIGNING IN…" : "SIGN IN"}
+                </button>
+
+                <button
+                  type="button"
+                  style={{ ...linkButtonStyle, textAlign: "right" }}
+                  onClick={() => { setNotice(""); setMode("forgot"); }}
+                >
+                  Forgot password?
+                </button>
+              </form>
+
+              <div style={{ marginTop: "28px", textAlign: "center" }}>
+                <span style={{ fontSize: "13px", color: "rgba(140,180,220,0.6)" }}>
+                  Don&apos;t have an account?{" "}
+                </span>
+                <Link href="/signup" style={{ fontSize: "13px", color: "#00d2ff", textDecoration: "none" }}>
+                  Sign up
+                </Link>
               </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                marginTop: "8px",
-                padding: "13px",
-                borderRadius: "8px",
-                background: loading
-                  ? "rgba(0,80,160,0.5)"
-                  : "linear-gradient(135deg, #0055cc, #0099ee)",
-                color: "#fff",
-                fontWeight: 600,
-                fontSize: "14px",
-                letterSpacing: "0.06em",
-                border: "none",
-                cursor: loading ? "not-allowed" : "pointer",
-                boxShadow: loading ? "none" : "0 0 24px rgba(0,120,255,0.3)",
-                opacity: loading ? 0.7 : 1,
+            </>
+          ) : (
+            <ForgotPasswordFlow
+              onDone={(message) => {
+                setNotice(message);
+                setMode("login");
               }}
-            >
-              {loading ? "SIGNING IN…" : "SIGN IN"}
-            </button>
-          </form>
+            />
+          )}
 
           <div style={{ marginTop: "36px", borderTop: "1px solid rgba(0,100,200,0.2)" }} />
           <p style={{ marginTop: "16px", fontSize: "12px", color: "rgba(100,150,200,0.5)", textAlign: "center" }}>

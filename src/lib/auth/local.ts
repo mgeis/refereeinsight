@@ -44,4 +44,38 @@ export const localAuthProvider: AuthProvider = {
     const hashed = await bcrypt.hash(newPassword, 12);
     await prisma.user.update({ where: { id: userId }, data: { password: hashed } });
   },
+
+  async changeOwnPassword(token, oldPassword, newPassword) {
+    const prisma = await getPrisma();
+    const session = await prisma.session.findUnique({ where: { token } });
+    if (!session) return false;
+
+    const user = await prisma.user.findUnique({ where: { id: session.userId } });
+    if (!user) return false;
+
+    const valid = await bcrypt.compare(oldPassword, user.password);
+    if (!valid) return false;
+
+    const hashed = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({ where: { id: user.id }, data: { password: hashed } });
+    return true;
+  },
+
+  async requestPasswordReset() {
+    throw new Error("Password reset via email is not supported by the local auth provider (no email delivery). Switch AUTH_PROVIDER to \"cognito\" to use this feature.");
+  },
+
+  async confirmPasswordReset() {
+    throw new Error("Password reset via email is not supported by the local auth provider (no email delivery). Switch AUTH_PROVIDER to \"cognito\" to use this feature.");
+  },
+
+  async signUp() {
+    // Local provider has no external identity to register — the caller
+    // creates the User row directly with a bcrypt-hashed password.
+    return { providerSub: null, needsConfirmation: false };
+  },
+
+  async confirmSignUp() {
+    return true;
+  },
 };

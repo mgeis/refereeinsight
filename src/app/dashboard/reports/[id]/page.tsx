@@ -1,6 +1,9 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getPrisma } from "@/lib/db";
+import { getSessionUserIdFromCookies } from "@/lib/session";
+import { userHasRole } from "@/lib/roles";
+import { logEvent } from "@/lib/events";
 import { MisconductSection } from "@/components/MisconductSection";
 
 export const dynamic = "force-dynamic";
@@ -74,24 +77,34 @@ function BulletList({ label, items }: { label: string; items: (string | null | u
 }
 
 export default async function ReportDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const userId = await getSessionUserIdFromCookies();
+  if (!userId) redirect("/");
+
+  const isAdmin = await userHasRole(userId, "ADMINISTRATOR");
+
   const { id } = await params;
   const prisma = await getPrisma();
-  const report = await prisma.matchReport.findUnique({
-    where: { id: Number(id) },
-    include: { position: true, misconducts: { orderBy: { minute: "asc" } } },
+  const report = await prisma.matchReport.findFirst({
+    where: isAdmin ? { id: Number(id) } : { id: Number(id), userId },
+    include: { position: true, match: { include: { misconducts: { orderBy: { minute: "asc" } } } } },
   });
 
   if (!report) notFound();
 
+  if (isAdmin && report.userId !== userId) {
+    logEvent("ADMIN_VIEWED_REPORT", { adminUserId: userId, reportId: report.id, reportOwnerId: report.userId });
+  }
+
   const crewRows: { label: string; crewName: string | null; feedbackFrom: string | null; feedbackFor: string | null }[] = [
-    { label: "Referee",             crewName: report.refereeCrewName, feedbackFrom: report.feedbackFromReferee, feedbackFor: report.feedbackForReferee },
-    { label: "Assistant Referee 1", crewName: report.ar1CrewName,     feedbackFrom: report.feedbackFromAr1,     feedbackFor: report.feedbackForAr1     },
-    { label: "Assistant Referee 2", crewName: report.ar2CrewName,     feedbackFrom: report.feedbackFromAr2,     feedbackFor: report.feedbackForAr2     },
-    { label: "4th Official",        crewName: report.fourthCrewName,  feedbackFrom: report.feedbackFromFourth,  feedbackFor: report.feedbackForFourth  },
+    { label: "Referee",             crewName: report.match.refereeCrewName, feedbackFrom: report.feedbackFromReferee, feedbackFor: report.feedbackForReferee },
+    { label: "Assistant Referee 1", crewName: report.match.ar1CrewName,     feedbackFrom: report.feedbackFromAr1,     feedbackFor: report.feedbackForAr1     },
+    { label: "Assistant Referee 2", crewName: report.match.ar2CrewName,     feedbackFrom: report.feedbackFromAr2,     feedbackFor: report.feedbackForAr2     },
+    { label: "4th Official",        crewName: report.match.fourthCrewName,  feedbackFrom: report.feedbackFromFourth,  feedbackFor: report.feedbackForFourth  },
   ];
 
   const userPositionName = report.position.name;
   const hasFeedback = crewRows.some(r => r.label !== userPositionName && (r.feedbackFrom || r.feedbackFor));
+  const canEditMisconducts = report.userId === userId && userPositionName === "Referee";
 
   return (
     <div className="p-6 lg:p-10 max-w-3xl" style={{ backgroundImage: "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(0,80,180,0.08) 0%, transparent 60%)" }}>
@@ -107,33 +120,35 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ i
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "28px", gap: "16px" }}>
         <div>
           <h1 style={{ color: "#e8f4ff", fontSize: "22px", fontWeight: 700, marginBottom: "4px" }}>
-            {report.homeTeam} <span style={{ color: "rgba(120,170,220,0.5)", fontWeight: 400 }}>vs</span> {report.awayTeam}
+            {report.match.homeTeam} <span style={{ color: "rgba(120,170,220,0.5)", fontWeight: 400 }}>vs</span> {report.match.awayTeam}
           </h1>
           <p style={{ color: "rgba(120,170,220,0.6)", fontSize: "13px" }}>
-            {formatDate(report.matchDate)} &nbsp;·&nbsp; {formatTime(report.matchTime)}
+            {formatDate(report.match.matchDate)} &nbsp;·&nbsp; {formatTime(report.match.matchTime)}
           </p>
         </div>
-        <Link href={`/dashboard/reports/${report.id}/edit`} style={{
-          display: "inline-flex", alignItems: "center", gap: "6px",
-          padding: "9px 18px", borderRadius: "8px", flexShrink: 0,
-          background: "rgba(0,80,160,0.4)", border: "1px solid rgba(0,150,255,0.3)",
-          color: "rgba(0,210,255,0.9)", fontSize: "13px", fontWeight: 600,
-          letterSpacing: "0.06em", textDecoration: "none",
-        }}>
-          EDIT
-        </Link>
+        {report.userId === userId && (
+          <Link href={`/dashboard/reports/${report.id}/edit`} style={{
+            display: "inline-flex", alignItems: "center", gap: "6px",
+            padding: "9px 18px", borderRadius: "8px", flexShrink: 0,
+            background: "rgba(0,80,160,0.4)", border: "1px solid rgba(0,150,255,0.3)",
+            color: "rgba(0,210,255,0.9)", fontSize: "13px", fontWeight: 600,
+            letterSpacing: "0.06em", textDecoration: "none",
+          }}>
+            EDIT
+          </Link>
+        )}
       </div>
 
       {/* Match info card */}
       <Card title="MATCH DETAILS">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "20px" }}>
-          <DetailRow label="Date"      value={formatDate(report.matchDate)} />
-          <DetailRow label="Kick-off"  value={formatTime(report.matchTime)} />
-          <DetailRow label="Location"  value={report.location} />
-          <DetailRow label="League"    value={report.league} />
-          <DetailRow label="Age Group" value={report.ageGroup} />
-          <DetailRow label="Home Team" value={report.homeTeam} />
-          <DetailRow label="Away Team" value={report.awayTeam} />
+          <DetailRow label="Date"      value={formatDate(report.match.matchDate)} />
+          <DetailRow label="Kick-off"  value={formatTime(report.match.matchTime)} />
+          <DetailRow label="Location"  value={report.match.location} />
+          <DetailRow label="League"    value={report.match.league} />
+          <DetailRow label="Age Group" value={report.match.ageGroup} />
+          <DetailRow label="Home Team" value={report.match.homeTeam} />
+          <DetailRow label="Away Team" value={report.match.awayTeam} />
         </div>
       </Card>
 
@@ -166,9 +181,10 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ i
       {/* Misconduct card */}
       <Card title="CAUTIONS &amp; SEND-OFFS">
         <MisconductSection
-          matchReportId={report.id}
+          matchId={report.matchId}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          initialMisconducts={report.misconducts as any}
+          initialMisconducts={report.match.misconducts as any}
+          readOnly={!canEditMisconducts}
         />
       </Card>
 

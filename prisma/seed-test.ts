@@ -514,11 +514,31 @@ async function main() {
 
   console.log(`\nCreating ${reports.length} match reports...\n`);
   for (const r of reports) {
-    const { misconducts, ...reportData } = r;
-    const created = await prisma.matchReport.create({ data: reportData });
+    const {
+      misconducts, positionId,
+      feedbackFromReferee, feedbackFromAr1, feedbackFromAr2, feedbackFromFourth,
+      feedbackForReferee, feedbackForAr1, feedbackForAr2, feedbackForFourth,
+      personalReflection, wentWell1, wentWell2, wentWell3, toImprove1, toImprove2, toImprove3,
+      matchDate, matchTime, location, homeTeam, awayTeam, league, ageGroup,
+      refereeCrewName, ar1CrewName, ar2CrewName, fourthCrewName,
+    } = r;
+
+    const match = await prisma.match.create({
+      data: { matchDate, matchTime, location, homeTeam, awayTeam, league, ageGroup, refereeCrewName, ar1CrewName, ar2CrewName, fourthCrewName },
+    });
+
+    const created = await prisma.matchReport.create({
+      data: {
+        userId: user.id, matchId: match.id, positionId,
+        feedbackFromReferee, feedbackFromAr1, feedbackFromAr2, feedbackFromFourth,
+        feedbackForReferee, feedbackForAr1, feedbackForAr2, feedbackForFourth,
+        personalReflection, wentWell1, wentWell2, wentWell3, toImprove1, toImprove2, toImprove3,
+      },
+    });
+
     if (misconducts.length > 0) {
       await prisma.misconduct.createMany({
-        data: misconducts.map(m => ({ ...m, matchReportId: created.id })),
+        data: misconducts.map(m => ({ ...m, matchId: match.id })),
       });
     }
     console.log(`  [${created.id}] ${r.homeTeam} vs ${r.awayTeam} (${r.ageGroup}, ${r.league})${misconducts.length > 0 ? ` — ${misconducts.length} card(s)` : ""}`);
